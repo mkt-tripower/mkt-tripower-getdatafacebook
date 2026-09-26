@@ -40,7 +40,22 @@ async function get(path, params, tokenStr) {
 /** Kiểm tra token trước khi chạy — hỏng token thì báo ngay, không để lỗi mơ hồ ở giữa chừng. */
 async function checkToken() {
   if (!USER_TOKEN) throw new Error('Thiếu FB_USER_TOKEN (đặt ở GitHub Secrets).');
-  const j = await call(`${GRAPH}/debug_token?input_token=${encodeURIComponent(USER_TOKEN)}&access_token=${encodeURIComponent(USER_TOKEN)}`);
+
+  // debug_token cho biết hạn dùng dữ liệu, nhưng Facebook CHỈ cho owner/developer của app
+  // soi token của app đó (lỗi code 100). Token vẫn dùng bình thường, nên đừng chết ở đây:
+  // lùi sang /me/permissions — vẫn lấy đủ danh sách quyền để requireScopes() làm việc.
+  let j;
+  try {
+    j = await call(`${GRAPH}/debug_token?input_token=${encodeURIComponent(USER_TOKEN)}&access_token=${encodeURIComponent(USER_TOKEN)}`);
+  } catch (e) {
+    if (!/code 100|owner or developer/i.test(e.message)) throw e;
+    const me = await get('me', { fields: 'id' });
+    const perm = await get('me/permissions', {});
+    const scopes = (perm.data || []).filter(x => x.status === 'granted').map(x => x.permission);
+    if (!scopes.length) throw new Error('FB_USER_TOKEN không hợp lệ / đã hết hạn → cấp lại token rồi cập nhật Secret.');
+    return { scopes, dataAccessExpires: 'không soi được (token của app khác)', userId: me.id };
+  }
+
   const d = j.data || {};
   if (!d.is_valid) throw new Error('FB_USER_TOKEN không hợp lệ / đã hết hạn → cấp lại token rồi cập nhật Secret.');
   const exp = d.data_access_expires_at ? new Date(d.data_access_expires_at * 1000).toISOString().slice(0, 10) : '?';
