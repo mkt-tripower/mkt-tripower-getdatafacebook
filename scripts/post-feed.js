@@ -303,7 +303,12 @@ const postComment = (token, objectId, message) =>
     // Bấm nút đăng 1 dòng = đăng ngay, không xét lịch.
     if (RESPECT_SCHEDULE && !RECORD_ID) {
       const s = scheduleMs(f['Lịch đăng bài']);
-      if (s && s > nowMs) { L.log(`  ⏳ ${id}: hẹn ${new Date(s).toISOString().slice(0, 16)}`); wait++; continue; }
+      // Quét cả bảng thì CHỈ đụng tới dòng CÓ hẹn giờ.
+      // Dòng bỏ trống "Lịch đăng bài" là dòng soạn sẵn hoặc dòng để đăng tay — coi nó là
+      // "đăng ngay" thì mỗi lần quét định kỳ sẽ bắn lên Facebook những bài chủ nhân chưa
+      // hề bấm đăng. Muốn đăng ngay thì đổi cột "Đăng" (automation gửi kèm record_id).
+      if (!s) { skip++; continue; }
+      if (s > nowMs) { L.log(`  ⏳ ${id}: hẹn ${new Date(s).toISOString().slice(0, 16)}`); wait++; continue; }
     }
 
     // Page nào ĐÃ đăng thành công ở lần chạy trước thì bỏ qua — Log giữ dấu "✔ <pageId> <tên>: <link>".
